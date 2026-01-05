@@ -14,6 +14,7 @@ export default function LiveInventoryScreen() {
     { id: "C", name: "Product C", quantity: 7 },
   ]);
   
+  
   const createProduct = (p:{name:string; quantity: number}) =>{
     setProducts((prev) => [
       ...prev, 
