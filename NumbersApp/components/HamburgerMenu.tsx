@@ -1,13 +1,9 @@
 import { useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Modal,
-} from "react-native";
+import { View, Text, StyleSheet, Pressable, Modal, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAppTheme } from "@/theme/theme";
+import { supabase } from "@/lib/supabase";
+import { router } from "expo-router";
 
 type MenuItem = {
   label: string;
@@ -18,12 +14,14 @@ type Props = {
   title?: string;
   subtitle?: string;
   items: MenuItem[];
+  showLogout?: boolean; 
 };
 
 export default function HamburgerMenu({
   title,
   subtitle,
   items,
+  showLogout = true, 
 }: Props) {
   const { colors, spacing, radius, fontSize } = useAppTheme();
   const [open, setOpen] = useState(false);
@@ -66,25 +64,43 @@ export default function HamburgerMenu({
 
         modalBackdrop: {
           flex: 1,
-          backgroundColor: "rgba(0,0,0,0.4)",
+          backgroundColor: "rgba(0,0,0,0.35)",
           flexDirection: "row",
         },
+
+ 
         sideMenu: {
-          width: 260,
+          width: 280,
           backgroundColor: colors.background,
           borderRightWidth: 1,
           borderRightColor: colors.border,
-          padding: spacing.lg,
+          paddingHorizontal: spacing.lg,
+
+          paddingTop: spacing.md,
+          paddingBottom: spacing.lg,
+
+   
+          borderTopLeftRadius: 0,
+          borderTopRightRadius: 0,
         },
+
+        menuHeader: {
+          paddingTop: spacing.md,
+          paddingBottom: spacing.md,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          marginBottom: spacing.md,
+        },
+
         menuTitle: {
           fontSize: fontSize.lg,
           fontWeight: "800",
           color: colors.text,
-          marginBottom: spacing.md,
         },
+
         menuItem: {
           paddingVertical: spacing.sm,
-          paddingHorizontal: spacing.sm,
+          paddingHorizontal: spacing.md,
           borderRadius: radius.md,
           backgroundColor: colors.card,
           borderWidth: 1,
@@ -95,10 +111,28 @@ export default function HamburgerMenu({
           color: colors.text,
           fontWeight: "700",
         },
+
+
+        logoutItem: {
+          marginTop: spacing.md,
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+        },
+        logoutText: {
+          color: colors.text,
+          fontWeight: "800",
+        },
+
         outsideTap: { flex: 1 },
       }),
     [colors, spacing, radius, fontSize]
   );
+
+  const handleLogout = async () => {
+    setOpen(false);
+    await supabase.auth.signOut();
+    router.replace("/authScreen");
+  };
 
   return (
     <>
@@ -129,8 +163,10 @@ export default function HamburgerMenu({
         onRequestClose={() => setOpen(false)}
       >
         <View style={styles.modalBackdrop}>
-          <SafeAreaView style={styles.sideMenu} edges={["top"]}>
-            <Text style={styles.menuTitle}>Menu</Text>
+          <SafeAreaView style={styles.sideMenu} edges={["top", "left", "bottom"]}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Menu</Text>
+            </View>
 
             {items.map((item) => (
               <Pressable
@@ -144,12 +180,18 @@ export default function HamburgerMenu({
                 <Text style={styles.menuItemText}>{item.label}</Text>
               </Pressable>
             ))}
+
+            {showLogout && (
+              <Pressable
+                style={[styles.menuItem, styles.logoutItem]}
+                onPress={handleLogout}
+              >
+                <Text style={styles.logoutText}>Log out</Text>
+              </Pressable>
+            )}
           </SafeAreaView>
 
-          <Pressable
-            style={styles.outsideTap}
-            onPress={() => setOpen(false)}
-          />
+          <Pressable style={styles.outsideTap} onPress={() => setOpen(false)} />
         </View>
       </Modal>
     </>

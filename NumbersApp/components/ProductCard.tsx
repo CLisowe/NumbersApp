@@ -1,40 +1,45 @@
 import { useMemo, useState, useEffect } from "react";
-import {View, Text, TextInput, Pressable, StyleSheet} from "react-native";
-import { FontSize, Radius, Spacing, useAppTheme, Colors } from "@/theme/theme";
+import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { useAppTheme } from "@/theme/theme";
 
 export type Product = {
-    id: string; 
-    name: string; 
-    quantity: number; 
+  id: string;
+  name: string;
+  quantity: number;
 };
 
 type Props = {
-    product: Product;
-    onUpdate: (next: Product) => void;
-    onDelete: (id: string) => void;
+  product: Product;
+
+  onUpdate: (next: Product) => Promise<{ ok: true } | { ok: false; error: string }>;
+  onDelete: (id: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 };
 
-export default function ProductCard({product, onUpdate, onDelete}: Props){
-    const {colors, spacing, radius, fontSize} = useAppTheme();
+export default function ProductCard({ product, onUpdate, onDelete }: Props) {
+  const { colors, spacing, radius, fontSize } = useAppTheme();
 
-    const[isEditing, setIsEditing] = useState(false);
-    const[draftName, setDraftName] = useState(product.name);
-    const[draftQuantity, setDraftQuantity] = useState(product.quantity);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftName, setDraftName] = useState(product.name);
+  const [draftQuantity, setDraftQuantity] = useState(product.quantity);
 
-    useEffect(()=>{
-        if(!isEditing) {
-            setDraftName(product.name);
-            setDraftQuantity(product.quantity);
-        }
-    }, [isEditing, product.name, product.quantity]);
-    
-    const qtyNumber = (()=> {
-        const n = draftQuantity;
-        if(Number.isNaN(n)) return 0; 
-        return Math.max(0, n);
-    })();
+  const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-    const styles = useMemo(
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftName(product.name);
+      setDraftQuantity(product.quantity);
+      setErrorMsg(null);
+    }
+  }, [isEditing, product.name, product.quantity]);
+
+  const qtyNumber = (() => {
+    const n = draftQuantity;
+    if (Number.isNaN(n)) return 0;
+    return Math.max(0, n);
+  })();
+
+  const styles = useMemo(
     () =>
       StyleSheet.create({
         card: {
@@ -93,6 +98,8 @@ export default function ProductCard({product, onUpdate, onDelete}: Props){
           alignItems: "center",
           justifyContent: "center",
           flex: 1,
+          flexDirection: "row",
+          gap: spacing.sm,
         },
         btnPrimary: {
           backgroundColor: colors.tint,
@@ -112,35 +119,85 @@ export default function ProductCard({product, onUpdate, onDelete}: Props){
           color: colors.danger,
           fontWeight: "800",
         },
+        errorBox: {
+          marginTop: spacing.sm,
+          padding: spacing.sm,
+          borderRadius: radius.md,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.background,
+        },
+        errorText: {
+          color: colors.text,
+          fontWeight: "700",
+          opacity: 0.9,
+        },
       }),
     [colors, spacing, radius, fontSize]
   );
 
   const startEdit = () => {
-    setDraftName(product.name); 
+    setDraftName(product.name);
     setDraftQuantity(product.quantity);
-    setIsEditing(true); 
-    console.log("startEdit");
+    setIsEditing(true);
+    setErrorMsg(null);
+    console.log("[ProductCard] startEdit", { id: product.id });
   };
 
   const cancelEdit = () => {
-    setDraftName(product.name); 
-    setDraftQuantity(product.quantity); 
+    setDraftName(product.name);
+    setDraftQuantity(product.quantity);
     setIsEditing(false);
-    console.log("cancelEdit");
+    setErrorMsg(null);
+    console.log("[ProductCard] cancelEdit", { id: product.id });
   };
 
-  const saveEdit = () => {
-    onUpdate({
-        ...product, 
-        name: draftName.trim() || product.name,
-        quantity: qtyNumber, 
-    });
+  const saveEdit = async () => {
+    const next: Product = {
+      ...product,
+      name: draftName.trim() || product.name,
+      quantity: qtyNumber,
+    };
+
+    console.log("[ProductCard] saveEdit -> calling onUpdate", { before: product, next });
+
+    setBusy(true);
+    setErrorMsg(null);
+
+    const res = await onUpdate(next);
+
+    setBusy(false);
+
+    if (!res.ok) {
+      console.log("[ProductCard] onUpdate failed", { id: product.id, error: res.error });
+      setErrorMsg(res.error);
+      return;
+    }
+
+    console.log("[ProductCard] onUpdate success", { id: product.id });
     setIsEditing(false);
-    console.log("saveEdit");
   };
 
-   return (
+  const doDelete = async () => {
+    console.log("[ProductCard] delete -> calling onDelete", { id: product.id });
+
+    setBusy(true);
+    setErrorMsg(null);
+
+    const res = await onDelete(product.id);
+
+    setBusy(false);
+
+    if (!res.ok) {
+      console.log("[ProductCard] onDelete failed", { id: product.id, error: res.error });
+      setErrorMsg(res.error);
+      return;
+    }
+
+    console.log("[ProductCard] onDelete success", { id: product.id });
+  };
+
+  return (
     <View style={styles.card}>
       {!isEditing ? (
         <>
@@ -150,16 +207,30 @@ export default function ProductCard({product, onUpdate, onDelete}: Props){
           </View>
 
           <View style={styles.actions}>
-            <Pressable style={[styles.btn, styles.btnPrimary]} onPress={startEdit}>
+            <Pressable
+              style={[styles.btn, styles.btnPrimary, busy && { opacity: 0.6 }]}
+              onPress={startEdit}
+              disabled={busy}
+            >
+              {busy ? <ActivityIndicator /> : null}
               <Text style={[styles.btnText, styles.btnTextPrimary]}>Edit</Text>
             </Pressable>
 
-            {onDelete && (
-              <Pressable style={[styles.btn, styles.btnDanger]} onPress={() => onDelete(product.id)}>
-                <Text style={styles.dangerText}>Delete</Text>
-              </Pressable>
-            )}
+            <Pressable
+              style={[styles.btn, styles.btnDanger, busy && { opacity: 0.6 }]}
+              onPress={doDelete}
+              disabled={busy}
+            >
+              {busy ? <ActivityIndicator /> : null}
+              <Text style={styles.dangerText}>Delete</Text>
+            </Pressable>
           </View>
+
+          {errorMsg ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{errorMsg}</Text>
+            </View>
+          ) : null}
         </>
       ) : (
         <>
@@ -171,29 +242,43 @@ export default function ProductCard({product, onUpdate, onDelete}: Props){
             placeholder="Name"
             placeholderTextColor={colors.icon}
             autoCapitalize="words"
+            editable={!busy}
           />
 
           <Text style={styles.label}>Quantity</Text>
           <TextInput
             value={String(draftQuantity)}
             onChangeText={(t) => {
-                const digits = t.replace(/[^0-9]/g,"");
-                setDraftQuantity(digits === "" ? 0 : parseInt(digits, 10));
+              const digits = t.replace(/[^0-9]/g, "");
+              setDraftQuantity(digits === "" ? 0 : parseInt(digits, 10));
             }}
             style={styles.input}
             keyboardType="number-pad"
             placeholder="0"
             placeholderTextColor={colors.icon}
+            editable={!busy}
           />
 
           <View style={styles.actions}>
-            <Pressable style={styles.btn} onPress={cancelEdit}>
+            <Pressable style={[styles.btn, busy && { opacity: 0.6 }]} onPress={cancelEdit} disabled={busy}>
               <Text style={styles.btnText}>Cancel</Text>
             </Pressable>
-            <Pressable style={[styles.btn, styles.btnPrimary]} onPress={saveEdit}>
+
+            <Pressable
+              style={[styles.btn, styles.btnPrimary, busy && { opacity: 0.6 }]}
+              onPress={saveEdit}
+              disabled={busy}
+            >
+              {busy ? <ActivityIndicator /> : null}
               <Text style={[styles.btnText, styles.btnTextPrimary]}>Save</Text>
             </Pressable>
           </View>
+
+          {errorMsg ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{errorMsg}</Text>
+            </View>
+          ) : null}
         </>
       )}
     </View>

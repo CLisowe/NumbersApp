@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Animated,
   Easing,
+  ActivityIndicator,
 } from "react-native";
 import { useAppTheme } from "@/theme/theme";
 
@@ -17,7 +18,7 @@ type NewProduct = {
 };
 
 type Props = {
-  onCreate: (product: NewProduct) => void;
+  onCreate: (product: NewProduct) => Promise<void> | void;
 };
 
 export default function CreateProductButton({ onCreate }: Props) {
@@ -25,9 +26,9 @@ export default function CreateProductButton({ onCreate }: Props) {
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [quantity, setQuantity] = useState(0);
-
-  // 0 = plus, 1 = x
+  const [quantity, setQuantity] = useState("0");
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -46,29 +47,47 @@ export default function CreateProductButton({ onCreate }: Props) {
 
   const reset = () => {
     setName("");
-    setQuantity(0);
+    setQuantity("0");
+    setErrorMsg(null);
   };
 
   const close = () => {
+    if(saving) return;
     setOpen(false);
+    setErrorMsg(null);
   };
 
-  const submit = () => {
-    if (!name.trim()) return;
+  const parseQuantity = (() => {
+    const digits = quantity.replace(/[^0-9]/g, "");
+    return digits === "" ? 0 : parseInt(digits, 10);
+  })();
 
-    onCreate({
-      name: name.trim(),
-      quantity: Math.max(0, quantity),
-    });
+  const canSubmit = name.trim().length > 0 && !saving;
 
-    reset();
-    close();
+  const submit = async () => {
+    if (!canSubmit) return;
+
+    setSaving(true);
+    setErrorMsg(null);
+
+    try{
+      await onCreate({
+        name:name.trim(), 
+        quantity: Math.max(0, parseQuantity),
+      });
+
+      reset();
+      setOpen(false);
+    } catch (e: any){
+      setErrorMsg(e?.message ?? "Failed to create product");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        // ✅ FAB stays clickable above FlatList
         fab: {
           position: "absolute",
           right: spacing.lg,
@@ -79,11 +98,8 @@ export default function CreateProductButton({ onCreate }: Props) {
           backgroundColor: colors.tint,
           alignItems: "center",
           justifyContent: "center",
-
-          // Make sure it is on top (Android + iOS)
           zIndex: 999,
           elevation: 12,
-
           shadowColor: "#000",
           shadowOpacity: 0.25,
           shadowRadius: 6,
@@ -130,6 +146,12 @@ export default function CreateProductButton({ onCreate }: Props) {
           paddingVertical: spacing.sm,
           marginBottom: spacing.md,
         },
+        error: {
+          color: "crimson",
+          marginTop: -spacing.sm,
+          marginBottom: spacing.sm,
+          fontWeight: "600",
+        },
         actions: {
           flexDirection: "row",
           gap: spacing.sm,
@@ -142,6 +164,10 @@ export default function CreateProductButton({ onCreate }: Props) {
           alignItems: "center",
           borderWidth: 1,
           borderColor: colors.border,
+          opacity: 1,
+        },
+        btnDisabled: {
+          opacity: 0.5,
         },
         btnPrimary: {
           backgroundColor: colors.tint,
@@ -160,7 +186,7 @@ export default function CreateProductButton({ onCreate }: Props) {
 
   return (
     <>
-      {/* Floating + button (rotates to X when open) */}
+      {/* Floating + button */}
       <Pressable
         style={styles.fab}
         onPress={() => setOpen((v) => !v)}
@@ -185,34 +211,49 @@ export default function CreateProductButton({ onCreate }: Props) {
               style={styles.input}
               placeholder="Product name"
               placeholderTextColor={colors.icon}
+              editable={!saving}
+              returnKeyType="next"
             />
 
             <Text style={styles.label}>Quantity</Text>
             <TextInput
-              value={String(quantity)}
-              onChangeText={(t) => {
-                const digits = t.replace(/[^0-9]/g, "");
-                setQuantity(digits === "" ? 0 : parseInt(digits, 10));
-              }}
+              value={quantity}
+              onChangeText={setQuantity}
               style={styles.input}
               keyboardType="number-pad"
               placeholder="0"
               placeholderTextColor={colors.icon}
+              editable={!saving}
             />
+
+            {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
 
             <View style={styles.actions}>
               <Pressable
-                style={styles.btn}
+                style={[styles.btn, saving ? styles.btnDisabled : null]}
                 onPress={() => {
                   reset();
                   close();
                 }}
+                disabled={saving}
               >
                 <Text style={styles.btnText}>Cancel</Text>
               </Pressable>
 
-              <Pressable style={[styles.btn, styles.btnPrimary]} onPress={submit}>
-                <Text style={[styles.btnText, styles.btnTextPrimary]}>Create</Text>
+              <Pressable
+                style={[
+                  styles.btn,
+                  styles.btnPrimary,
+                  !canSubmit ? styles.btnDisabled : null,
+                ]}
+                onPress={submit}
+                disabled={!canSubmit}
+              >
+                {saving ? (
+                  <ActivityIndicator />
+                ) : (
+                  <Text style={[styles.btnText, styles.btnTextPrimary]}>Create</Text>
+                )}
               </Pressable>
             </View>
           </View>
