@@ -1,149 +1,110 @@
-import { useMemo, useState, useEffect } from "react";
-import { View, StyleSheet, Alert } from "react-native";
+import React, { useMemo, useRef, useState, useEffect } from "react";
+import { View, StyleSheet } from "react-native";
+import PagerView from "react-native-pager-view";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { useAppTheme } from "@/theme/theme";
-import HamburgerMenu from "@/components/HamburgerMenu";
-import ProductCard, { Product } from "@/components/ProductCard";
-import CreateProductButton from "@/components/CreateProductButton";
-import PullToRefreshList from "@/components/PullToRefreshList";
-import { supabase } from "@/lib/supabase";
-import { Router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
+
+import Overview from "./Overview";
+import Products from "./Products";
+import Orders from "./Orders";
+
+export default function Index() {
+  const { colors, spacing, radius } = useAppTheme();
+  const pagerRef = useRef<PagerView>(null);
+  const [pageIndex, setPageIndex] = useState(1);
+  const insets = useSafeAreaInsets();
 
 
-export default function LiveInventoryScreen() {
-  const { colors, spacing } = useAppTheme();
+  const { page } = useLocalSearchParams<{ page?: string }>();
 
-  const [products, setProducts] = useState<Product[]>([]); 
-
-  const fetchProducts = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-
-    const { data, error } = await supabase
-      .from("products")
-      .select("id,name,quantity")
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-    setProducts(data ?? []);
-  };
-
-  async function updateProduct (next: Product)  {
-    const {data, error} = await supabase
-    .from("products")
-    .update({name:next.name, quantity: next.quantity})
-    .eq("id", next.id)
-    .select()
-    .single();
-    console.log("[DB] update product", {next, data, error});
-
-    if(error) return{ok:false as const, error: error.message};
-
-    setProducts((prev)=> prev.map((p) => (p.id === next.id ? next : p)));
-
-    return {ok: true as const};
-  }
-
-  async function deleteProduct (id: string){
-
-    const confirmed = await new Promise<boolean>((resolve)=> {
-      Alert.alert(
-        "Delete Product?",
-        "This cannot be undone.",
-        [
-          {text: "Cancel", style:"cancel", onPress: () => resolve(false)},
-          {text: "Delete", style: "destructive", onPress: () => resolve(true)}, 
-        ],
-        {cancelable: true, onDismiss: () => resolve(false)}
-      );
-    });
-
-    if(!confirmed){
-      return {ok:true as const};
-    }
-
-    setProducts((prev)=> prev.filter((p)=> p.id!==id));
-
-    const{data, error} = await supabase
-    .from("products")
-    .delete()
-    .eq("id", id)
-    .select();
-
-    console.log("[DB] delete product", {id, data, error});
-
-    if(error){
-      await fetchProducts().catch(console.error);
-      return {ok:false as const, error: error.message};
-    } 
-    return {ok:true as const};
-  }
-
-  useEffect(() => {
-    fetchProducts().catch(console.error);
-  }, []);
-
-  const createProduct = async (p: { name: string; quantity: number }) => {
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    if (!session) throw new Error("Not logged in");
-
-    const { data, error } = await supabase
-      .from("products")
-      .insert({
-        user_id: session.user.id,
-        name: p.name,
-        quantity: p.quantity,
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    setProducts((prev) => [
-      ...prev,
-      { id: data.id, name: data.name, quantity: data.quantity },
-    ]);
-  };
-
+  const pageCount = useMemo(() => 3, []);
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
-        container: {
-          flex: 1,
-          backgroundColor: colors.background,
-          padding: spacing.lg,
+        safe: { flex: 1, backgroundColor: colors.background },
+        pager: { flex: 1 },
+        pageWrapper: { flex: 1, backgroundColor: colors.background },
+
+        dotsRow: {
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          flexDirection: "row",
+          justifyContent: "center",
+          alignItems: "center",
+          paddingTop: spacing.sm,
         },
+
+        dot: {
+          width: spacing.sm,
+          height: spacing.sm,
+          borderRadius: radius.sm,
+          marginHorizontal: spacing.sm,
+          backgroundColor: colors.dot,
+        },
+        dotActive: { opacity: 1, transform: [{ scale: 1.1 }] },
+        dotInactive: { opacity: 0.35 },
       }),
-    [colors, spacing]
+    [colors, spacing, radius]
   );
 
+
+  useEffect(() => {
+    if (!page) return;
+
+    const target =
+      page === "Orders" ? 0 :
+      page === "Overview" ? 1 :
+      page === "Products" ? 2 :
+      1;
+
+    pagerRef.current?.setPage(target);
+    setPageIndex(target);
+  }, [page]);
+
   return (
-    <SafeAreaView style = {{flex:1, backgroundColor: colors.background}} edges={["top"]}>
-    <View style={styles.container}>
-      <HamburgerMenu
-        title="Numbers App"
-        subtitle="Live Inventory"
-        items={[
-          { label: "Live Inventory", onPress: () => {} },
-          { label: "Orders", onPress: () => {} },
-          { label: "Settings", onPress: () => {} },
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <StatusBar style="light" />
+
+      <PagerView
+        ref={pagerRef}
+        style={styles.pager}
+        initialPage={1}
+        onPageSelected={(e) => setPageIndex(e.nativeEvent.position)}
+      >
+        <View key="orders" style={styles.pageWrapper}>
+          <Orders />
+        </View>
+
+        <View key="overview" style={styles.pageWrapper}>
+          <Overview />
+        </View>
+
+        <View key="products" style={styles.pageWrapper}>
+          <Products />
+        </View>
+      </PagerView>
+
+      <View
+        style={[
+          styles.dotsRow,
+          { paddingBottom: Math.max(insets.bottom, spacing.sm) },
         ]}
-      />
-
-      <CreateProductButton onCreate={createProduct} />
-
-      <PullToRefreshList
-        data={products}
-        keyExtractor={(p) => p.id}
-        contentContainerStyle={{ paddingBottom: spacing.lg }}
-        onRefreshAsync={fetchProducts}
-        renderItem={({ item }) => (
-          <ProductCard product={item} onUpdate={updateProduct} onDelete={deleteProduct} />
-        )}
-      />
-    </View>
+      >
+        {Array.from({ length: pageCount }).map((_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.dot,
+              i === pageIndex ? styles.dotActive : styles.dotInactive,
+            ]}
+          />
+        ))}
+      </View>
     </SafeAreaView>
   );
 }

@@ -34,6 +34,9 @@ export const Colors = {
     icon: "#687076",
     danger: "#D92D20",
     success: "#039855",
+    dot: "#1F2326",
+    favorite: "#F4B400",     
+    favoriteMuted: "#9CA3AF",
   },
   dark: {
     text: "#ECEDEE",
@@ -44,16 +47,16 @@ export const Colors = {
     icon: "#9BA1A6",
     danger: "#F97066",
     success: "#32D583",
+    dot: "#F6F7F8",
+    favorite: "#FACC15",      
+    favoriteMuted: "#6B7280",
   },
 };
 
-export type ThemeName = keyof typeof Colors; // "light" | "dark"
+export type ThemeName = keyof typeof Colors; 
 export type ThemeColors = typeof Colors.light;
 
-/**
- * Use when you want a single color value that adapts to light/dark.
- * Example: color: useThemeColor({}, "text")
- */
+
 export function useThemeColor(
   props: { light?: string; dark?: string },
   colorName: keyof ThemeColors
@@ -63,10 +66,7 @@ export function useThemeColor(
   return override ?? Colors[theme][colorName];
 }
 
-/**
- * Use when you want the whole theme object.
- * Example: const { colors, spacing } = useAppTheme()
- */
+
 export function useAppTheme() {
   const theme = useColorScheme() ?? "light";
   return {

@@ -1,30 +1,43 @@
 import { useMemo, useState } from "react";
-import { View, Text, StyleSheet, Pressable, Modal, Platform } from "react-native";
+import { View, Text, StyleSheet, Pressable, Modal, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAppTheme } from "@/theme/theme";
 import { supabase } from "@/lib/supabase";
 import { router } from "expo-router";
+import { useImportProductsCsv } from "@/lib/importProductsFromCsv";
+
 
 type MenuItem = {
   label: string;
-  onPress: () => void;
+  onPress: () => void | Promise<void>;
 };
 
 type Props = {
   title?: string;
   subtitle?: string;
   items: MenuItem[];
-  showLogout?: boolean; 
+  showLogout?: boolean;
+
+
+  enableProductCsvImport?: boolean;
+
+
+  onProductsImported?: () => void;
 };
 
 export default function HamburgerMenu({
   title,
   subtitle,
   items,
-  showLogout = true, 
+  showLogout = true,
+  enableProductCsvImport = false,
+  onProductsImported,
 }: Props) {
   const { colors, spacing, radius, fontSize } = useAppTheme();
   const [open, setOpen] = useState(false);
+
+
+  const { isImporting, importProductsCsv } = useImportProductsCsv();
 
   const styles = useMemo(
     () =>
@@ -61,29 +74,23 @@ export default function HamburgerMenu({
           fontWeight: "600",
           color: colors.icon,
         },
-
         modalBackdrop: {
           flex: 1,
           backgroundColor: "rgba(0,0,0,0.35)",
           flexDirection: "row",
         },
-
- 
         sideMenu: {
           width: 280,
+          flex:1, 
           backgroundColor: colors.background,
           borderRightWidth: 1,
           borderRightColor: colors.border,
           paddingHorizontal: spacing.lg,
-
           paddingTop: spacing.md,
-          paddingBottom: spacing.lg,
-
-   
+          paddingBottom: spacing.md,
           borderTopLeftRadius: 0,
           borderTopRightRadius: 0,
         },
-
         menuHeader: {
           paddingTop: spacing.md,
           paddingBottom: spacing.md,
@@ -91,13 +98,11 @@ export default function HamburgerMenu({
           borderBottomColor: colors.border,
           marginBottom: spacing.md,
         },
-
         menuTitle: {
           fontSize: fontSize.lg,
           fontWeight: "800",
           color: colors.text,
         },
-
         menuItem: {
           paddingVertical: spacing.sm,
           paddingHorizontal: spacing.md,
@@ -111,18 +116,15 @@ export default function HamburgerMenu({
           color: colors.text,
           fontWeight: "700",
         },
-
-
         logoutItem: {
-          marginTop: spacing.md,
+          marginTop: spacing.lg,
           backgroundColor: colors.card,
-          borderColor: colors.border,
+          borderColor: colors.danger,
         },
         logoutText: {
-          color: colors.text,
+          color: colors.danger,
           fontWeight: "800",
         },
-
         outsideTap: { flex: 1 },
       }),
     [colors, spacing, radius, fontSize]
@@ -134,9 +136,58 @@ export default function HamburgerMenu({
     router.replace("/authScreen");
   };
 
+  const handleImport = async () => {
+    setOpen(false);
+
+    const res = await importProductsCsv();
+
+    if (
+      res.totalRows === 0 &&
+      res.validRows === 0 &&
+      res.imported === 0 &&
+      res.errors.length === 0
+    ) {
+      return;
+    }
+
+    if (res.errors.length) {
+      const preview = res.errors
+        .slice(0, 3)
+        .map((e) => `Row ${e.row}: ${e.message}`)
+        .join("\n");
+
+      const more =
+        res.errors.length > 3
+          ? `\n… +${res.errors.length - 3} more`
+          : "";
+
+      Alert.alert(
+        "Import finished (with issues)",
+        `Total rows: ${res.totalRows}\nValid rows: ${res.validRows}\nImported: ${res.imported}\nSkipped: ${res.skipped}\n\n${preview}${more}`
+      );
+      return;
+    }
+
+    Alert.alert("Import complete", `Imported: ${res.imported}`);
+    onProductsImported?.();
+  };
+
+  const menuItems: MenuItem[] = useMemo(() => {
+    const base = [...items];
+
+    if (enableProductCsvImport) {
+      base.push({
+        label: isImporting ? "Importing…" : "Import CSV",
+        onPress: handleImport,
+      });
+    }
+
+    return base;
+  }, [items, enableProductCsvImport, isImporting]);
+
   return (
     <>
-      {/* Header */}
+
       <View style={styles.headerRow}>
         <Pressable
           style={styles.hamburgerBtn}
@@ -155,7 +206,7 @@ export default function HamburgerMenu({
         )}
       </View>
 
-      {/* Menu */}
+
       <Modal
         visible={open}
         transparent
@@ -168,13 +219,14 @@ export default function HamburgerMenu({
               <Text style={styles.menuTitle}>Menu</Text>
             </View>
 
-            {items.map((item) => (
+            {menuItems.map((item) => (
               <Pressable
                 key={item.label}
                 style={styles.menuItem}
-                onPress={() => {
+                disabled={isImporting && item.label.includes("Import")}
+                onPress={async () => {
                   setOpen(false);
-                  item.onPress();
+                  await Promise.resolve(item.onPress());
                 }}
               >
                 <Text style={styles.menuItemText}>{item.label}</Text>

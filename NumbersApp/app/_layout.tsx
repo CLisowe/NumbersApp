@@ -2,6 +2,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator } from "react-native";
 import { supabase } from "../lib/supabase";
+import { ProductProvider } from "@/components/ProductProvider";
 
 export default function RootLayout() {
   const router = useRouter();
@@ -45,7 +46,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (!ready) return;
 
-    const inAuthScreen = segments[0] === "authScreen"; // because your auth screen is /authScreen
+    const inAuthScreen = segments[0] === "authScreen"; 
 
     if (!session && !inAuthScreen) {
       router.replace("/authScreen");
@@ -65,9 +66,11 @@ export default function RootLayout() {
   }
 
   return (
+    <ProductProvider>
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="authScreen" />
       <Stack.Screen name="index" />
     </Stack>
+    </ProductProvider>
   );
 }
